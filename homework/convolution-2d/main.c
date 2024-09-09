@@ -61,9 +61,22 @@ void OpenCLConvolution2D(Matrix *input0, Matrix *input1, Matrix *result)
     kernel = clCreateKernel(program, "convolution2D", &err);
     CHECK_ERR(err, "clCreateKernel");
 
-    //@@ Allocate GPU memory here
+    size_t size_a = sizeof(float) * input0->shape[0] * input0->shape[1] * IMAGE_CHANNELS;
+    size_t size_b = sizeof(float) * input1->shape[0] * input1->shape[1];
+    size_t size_c = sizeof(float) * input0->shape[0] * input0->shape[1] * IMAGE_CHANNELS ;
+
+    device_a = clCreateBuffer(context,CL_MEM_READ_ONLY , size_a, NULL, &err );
+    CHECK_ERR(err, "clCreateBuffer device a");
+    device_b = clCreateBuffer(context,CL_MEM_READ_ONLY, size_b, NULL, &err );
+    CHECK_ERR(err, "clCreateBuffer device b");
+    device_c = clCreateBuffer(context,CL_MEM_WRITE_ONLY, size_c, NULL, &err );
+    CHECK_ERR(err, "clCreateBuffer device c");
 
     //@@ Copy memory to the GPU here
+    err = clEnqueueWriteBuffer(queue, device_a, CL_TRUE ,0, size_a, input0->data, 0, NULL, NULL);
+    CHECK_ERR(err, "clEnqueueWriteBuffer device a");
+    err = clEnqueueWriteBuffer(queue, device_b, CL_TRUE,0, size_b, input1->data, 0, NULL, NULL);
+    CHECK_ERR(err, "clEnqueueWriteBuffer device b");
 
     // Set the arguments to our compute kernel
     // __global float * inputData, __global float * outputData, __constant float * maskData,
@@ -85,12 +98,22 @@ void OpenCLConvolution2D(Matrix *input0, Matrix *input1, Matrix *result)
     CHECK_ERR(err, "clSetKernelArg 6");
 
     // @@ define local and global work sizes
-
+    size_t global_item_size[2] = {input0->shape[0], input0->shape[1]};
+    size_t local_item_size[2] = {1,1};
     //@@ Launch the GPU Kernel here
-
+    err = clEnqueueNDRangeKernel(queue, kernel, 2, NULL, global_item_size, local_item_size,0, NULL, NULL);
+    CHECK_ERR(err, "clEnqueueNDRangeKernel");
     //@@ Copy the GPU memory back to the CPU here
-
+    err = clEnqueueReadBuffer(queue, device_c, CL_TRUE ,0, size_c, result->data, 0, NULL, NULL);
+    CHECK_ERR(err, "clEnqueueReadBuffer device c");
     //@@ Free the GPU memory here
+    clReleaseMemObject(device_a);
+    clReleaseMemObject(device_b);
+    clReleaseMemObject(device_c);
+    clReleaseProgram(program);
+    clReleaseKernel(kernel); 
+    clReleaseCommandQueue(queue); 
+    clReleaseContext(context);
 }
 
 int main(int argc, char *argv[])
@@ -123,10 +146,11 @@ int main(int argc, char *argv[])
     int rows, cols;
     //@@ Update these values for the output rows and cols of the output
     //@@ Do not use the results from the answer image
-
+    rows = host_a.shape[0];
+    cols = host_a.shape[1] ;
     // Allocate the memory for the target.
-    host_c.shape[0] = rows;
-    host_c.shape[1] = cols;
+    host_c.shape[0] = host_a.shape[0];
+    host_c.shape[1] = host_a.shape[1]; 
     host_c.data = (float *)malloc(sizeof(float) * host_c.shape[0] * host_c.shape[1] * IMAGE_CHANNELS);
 
     OpenCLConvolution2D(&host_a, &host_b, &host_c);
